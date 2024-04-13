@@ -12,7 +12,10 @@
 
 # pip install -q mediapipe
 
+import os
 import cv2
+import time
+
 import mediapipe as mp
 import matplotlib.pyplot as plt
 from scipy.signal import savgol_filter
@@ -24,7 +27,8 @@ from matplotlib.pyplot import *
 
 ##### Get the video labels datas #####
 
-def get_labels_video(path, labels_mp):
+def get_labels_video(path, labels_mp, video_name):
+    start = time.time()
 
     # Initialize MediaPipe Pose and Drawing utilities
     mp_pose = mp.solutions.pose
@@ -43,7 +47,7 @@ def get_labels_video(path, labels_mp):
     height = img.shape[1]
 
     # Create video output
-    out = cv2.VideoWriter('TestVideosOutput/test_output.mp4', cv2.VideoWriter.fourcc(*'MP4V'), fps, (height, width))
+    out = cv2.VideoWriter('TestVideosOutput/output_'+video_name+'.mp4', cv2.VideoWriter.fourcc(*'MP4V'), fps, (height, width))
 
     # Video Labellisation
     datas = []
@@ -51,6 +55,7 @@ def get_labels_video(path, labels_mp):
         coords = [[], [], [], []]
         datas.append(coords)
 
+    cpt = 0
     while cap.isOpened():
         ret, frame = cap.read()
         if not ret:
@@ -73,10 +78,190 @@ def get_labels_video(path, labels_mp):
             datas[i][2].append(result.pose_landmarks.landmark[i].z)
             datas[i][3].append(result.pose_landmarks.landmark[i].visibility)
 
+        cpt = cpt + 1
+
+        # if cpt%30 == 0:
+        #    mp_drawing.plot_landmarks(result.pose_landmarks, mp_pose.POSE_CONNECTIONS)
+
     out.release()
     cap.release()
 
-    return datas, nb_frame, fps
+    delta_time = time.time() - start
+
+    return datas, nb_frame, fps, delta_time
+
+
+def crop_datas_maxmin(datass, len_min):
+    new_datass = []
+    for datas in datass:
+        new_datas = []
+
+        for coords in datas:
+            new_coords = []
+
+            for coord in coords:
+                new_coord = coord[:(int(len_min)-1)]
+                new_coords.append(new_coord)
+
+            new_datas.append(new_coords)
+
+        new_datass.append(new_datas)
+
+    return new_datass
+
+
+def get_all_datas(video_repo_path, labels_mediapipe):
+    tot_datas = []
+    tot_filtered_datas = []
+
+    tot_rotated_datas = []
+    tot_rotated_filtered_datas = []
+
+    tot_nb_frames = []
+    tot_fps = []
+    tot_deltas = []
+
+    # Get all video datas by name from source directory
+    video_names = os.listdir(video_repo_path)
+    for video_name in video_names:
+        print("Processing video : " + video_name + "...")
+
+        video_path = video_repo_path + "/" + video_name
+
+        # Get datas & rotate space
+        datas, nb_frame, fps, delta_time = get_labels_video(video_path, labels_mediapipe, video_name)
+        rotated_datas = rotation_space(datas, nb_frame, fps, labels_mediapipe)
+
+        # Get filtered datas & rotate space
+        filtered_datas = []
+        for coord in datas:
+            filtered_datas.append(lowpass_butter(coord, fps, 1))
+        rotated_filtered_datas = rotation_space(filtered_datas, nb_frame, fps, labels_mediapipe)
+
+        # Store datas for all videos
+        tot_datas.append(datas)
+        tot_filtered_datas.append(filtered_datas)
+
+        tot_rotated_datas.append(rotated_datas)
+        tot_rotated_filtered_datas.append(rotated_filtered_datas)
+
+        tot_nb_frames.append(nb_frame)
+        tot_fps.append(fps)
+        tot_deltas.append(delta_time)
+
+    # Crop all datas to maximum minimum number of frames
+    len_min = min(tot_nb_frames)
+    fps_min = min(tot_fps)
+
+    new_tot_datas = crop_datas_maxmin(tot_datas, len_min)
+    new_tot_filtered_datas = crop_datas_maxmin(tot_filtered_datas, len_min)
+    new_tot_rotated_datas = crop_datas_maxmin(tot_rotated_datas, len_min)
+    new_tot_rotated_filtered_datas = crop_datas_maxmin(tot_rotated_filtered_datas, len_min)
+
+    # get median delta times of calcul
+
+    return (new_tot_datas, new_tot_filtered_datas,
+            new_tot_rotated_datas, new_tot_rotated_filtered_datas,
+            video_names, len_min, fps_min, tot_deltas)
+
+
+##### Center curves #####
+
+def center_allvideos(tot_datas, tot_fil_datas, tot_rot_datas, tot_rot_fil_datas, labels_mediapipe):
+    index = labels_mediapipe.index('right shoulder')
+
+    middle_idexes = []
+    nb_values_after = []
+    nb_values_before = []
+    for k in range(0, len(tot_rot_fil_datas)):
+        y_array = tot_rot_fil_datas[k][index][1]
+        middle_index = get_middle_point(y_array)
+
+        if middle_index == -1:
+            print("impossible to center video ", k)
+            middle_idexes.append(len(y_array)//2)
+        else:
+            middle_idexes.append(middle_index)
+
+        nb_values_after.append(len(y_array)-middle_index)
+        nb_values_before.append(middle_idexes[k])
+
+    max_after = min(nb_values_after)
+    max_before = min(nb_values_before)
+
+    new_tot_datas = []
+    new_tot_fil_datas = []
+    new_tot_rot_datas = []
+    new_tot_rot_fil_datas = []
+    for k in range(0, len(tot_rot_fil_datas)):
+        new_tot_datas.append([])
+        new_tot_fil_datas.append([])
+        new_tot_rot_datas.append([])
+        new_tot_rot_fil_datas.append([])
+        for i in range(0, len(labels_mediapipe)):
+            new_tot_datas[k].append([])
+            new_tot_fil_datas[k].append([])
+            new_tot_rot_datas[k].append([])
+            new_tot_rot_fil_datas[k].append([])
+            for j in range(0, 3):
+                arr_tot = tot_datas[k][i][j][middle_idexes[k]-max_before:max_after+middle_idexes[k]]
+                arr_tot_fil_datas = tot_fil_datas[k][i][j][middle_idexes[k]-max_before:max_after+middle_idexes[k]]
+                arr_tot_rot_datas = tot_rot_datas[k][i][j][middle_idexes[k]-max_before : max_after+middle_idexes[k]]
+                arr_tot_rot_fil_datas = tot_rot_fil_datas[k][i][j][middle_idexes[k]-max_before : max_after+middle_idexes[k]]
+
+                new_tot_datas[k][i].append(arr_tot)
+                new_tot_fil_datas[k][i].append(arr_tot_fil_datas)
+                new_tot_rot_datas[k][i].append(arr_tot_rot_datas)
+                new_tot_rot_fil_datas[k][i].append(arr_tot_rot_fil_datas)
+
+    nb_frame = max_before + max_after + 1
+
+    return new_tot_datas, new_tot_fil_datas, new_tot_rot_datas, new_tot_rot_fil_datas, nb_frame
+
+
+
+def find_local_maxmin(arr):
+    mx = []
+    mn = []
+
+    if arr[0] > arr[1]:
+        mx.append(0)
+    elif arr[0] < arr[1]:
+        mn.append(0)
+
+    for i in range(1, len(arr) - 1):
+        if arr[i - 1] > arr[i] < arr[i + 1]:
+            mn.append(i)
+
+        elif arr[i - 1] < arr[i] > arr[i + 1]:
+            mx.append(i)
+
+    if arr[-1] > arr[-2]:
+        mx.append(len(arr) - 1)
+    elif arr[-1] < arr[-2]:
+        mn.append(len(arr) - 1)
+
+    return mx, mn
+
+
+import bisect
+def get_middle_point(arr):
+    mx_indexes, mn_indexes = find_local_maxmin(arr)
+    arr_max = max(arr)
+
+    for i in range(0, len(mx_indexes)):
+        if abs(arr[mx_indexes[i]]-arr_max) < 0.05:
+            mn_indexes_temp = mn_indexes
+            bisect.insort(mn_indexes_temp, mx_indexes[i])
+
+            ind_max = mn_indexes_temp.index(mx_indexes[i])
+
+            if ind_max != 0 & ind_max != len(mn_indexes_temp) - 1 :
+                if abs(arr[mn_indexes_temp[ind_max-1]] - arr[mn_indexes_temp[ind_max+1]])<0.1:
+                    return mx_indexes[i]
+
+    return -1
+
 
 
 ##### Plot 3D curves of the video labels #####
@@ -125,15 +310,24 @@ def plot_1d_2curves(x1, y1, z1, x2, y2, z2, nb_frame, fps, name):
     plt.legend()
     plt.show()
 
+
+def plot_1d_ncurves(datass, nb_frame, fps, label_name, index, legend):
+    dims = ["x", "y", "z"]
+    colors = ['r', 'b', 'g', 'c', 'm', 'y']
+
+    for i in range(0, 3):
+        plt.title('Comparison videos datas on ' + dims[i] + ' for ' + label_name + " (" + legend + ")", fontsize=14)
+        times = np.linspace(0, int(nb_frame // fps), int(nb_frame - 1))
+
+        for k in range(0, len(datass)):
+            plt.plot(times, datass[k][index][i], colors[k % len(colors)], label="Input video " + dims[i] + str(k))
+
+        plt.legend()
+        plt.show()
+
+
+
 ##### Numerical signal filtering (outliers) #####
-
-def custom_outliers(array):
-    for k in range(1, len(array)-1):
-        delta = array[k-1] - array[k+1]
-
-        if delta < 0:
-            print("hello")
-
 
 def clean_outliers(array_1d):
     q1 = np.quantile(array_1d, .25)
@@ -179,13 +373,13 @@ def get_proj_vector(index1, index2, datas, nb_frame, fps):
     fil_y2 = lowpass_butter(datas[index2][1], fps, 1)
     fil_z2 = lowpass_butter(datas[index2][2], fps, 1)
 
-    plot_1d_2curves(fil_x1, fil_y1, fil_z1, fil_x2, fil_y2, fil_z2, nb_frame, fps, "left and right soulder curves")
+    # plot_1d_2curves(fil_x1, fil_y1, fil_z1, fil_x2, fil_y2, fil_z2, nb_frame, fps, "left and right soulder curves")
 
     proj_x_moy = np.sum(fil_x2-fil_x1) / len(fil_x1)
     proj_y_moy = np.sum(fil_y2-fil_y1) / len(fil_y1)
     proj_z_moy = np.sum(fil_z2-fil_z1) / len(fil_z1)
 
-    plot_1d_curve(fil_x1-fil_x2, fil_y1-fil_y2, fil_z1-fil_z2, nb_frame, fps, "Difference vector between shoulders")
+    # plot_1d_curve(fil_x1-fil_x2, fil_y1-fil_y2, fil_z1-fil_z2, nb_frame, fps, "Difference vector between shoulders")
 
     return [proj_x_moy, proj_y_moy, proj_z_moy]
 
@@ -193,32 +387,37 @@ def get_proj_vector(index1, index2, datas, nb_frame, fps):
 def angle_2vectors(v1, axis):
     match axis:
         case "x":
-            v2 = [1, 0, 0]
+            v2 = [1, 0]
+            v1 = [v1[0], v1[1]]
         case "y":
-            v2 = [0, 1, 0]
+            v2 = [1, 0]
+            v1 = [v1[1], v1[2]]
         case "z":
-            v2 = [0, 0, 1]
+            v2 = [0, 1]
+            v1 = [v1[0], v1[2]]
         case _:
             v2 = [0, 0, 0]
 
-    return np.arccos(np.dot(v2, v1) / (np.linalg.norm(v1) * np.linalg.norm(v2)))
+    result_radians = np.arccos(np.dot(v2, v1) / (np.linalg.norm(v1) * np.linalg.norm(v2)))
+
+    if result_radians > np.pi/2:
+        result_radians = result_radians - np.pi
+
+    return result_radians
 
 
-def get_rot_matrix(labels_mp, proj_axis, rot_axis):
+def get_rot_matrix(datas, nb_frame, fps, labels_mp, proj_axis, rot_axis):
     index1 = labels_mp.index('left shoulder')
     index2 = labels_mp.index('right shoulder')
 
     vect_proj = get_proj_vector(index1, index2, datas, nb_frame, fps)
     angle = angle_2vectors(vect_proj, proj_axis)
 
-    print("Angle : ", angle, "°")
-
     match rot_axis:
         case "x":
             matrix_rot = np.array([[1, 0, 0], [0, np.cos(angle), -np.sin(angle)], [0, np.sin(angle), np.cos(angle)]])
         case "y":
             matrix_rot = np.array([[np.cos(angle), 0, np.sin(angle)], [0, 1, 0], [-np.sin(angle), 0, np.cos(angle)]])
-            print("babas")
         case "z":
             matrix_rot = np.array([[np.cos(angle), -np.sin(angle), 0], [np.sin(angle), -np.cos(angle), 0], [0, 0, 1]])
         case _:
@@ -228,7 +427,7 @@ def get_rot_matrix(labels_mp, proj_axis, rot_axis):
 
 
 def rotation_space(datas, nb_frame, fps, labels_mp):
-    matrix_rot = get_rot_matrix(labels_mp, "z", "y")
+    matrix_rot = get_rot_matrix(datas, nb_frame, fps, labels_mp, "z", "y")
 
     rot_datas = []
     for ind in range(0, len(datas)): # for all indexes
@@ -272,14 +471,51 @@ def tests_plot_results(index, datas, nb_frame, fps):
 
 
 # Get labels of a selected videos
+
+labels_mediapipe = ['nose', 'left eye (inner)', 'left eye', 'left eye (outer)', 'right eye (inner)', 'right eye', 'right eye (outer)',
+                    'left ear', 'right ear', 'mouth (left)', 'mouth (right)', 'left shoulder', 'right shoulder', 'left elbow', 'right elbow',
+                    'left wrist', 'right wrist', 'left pinky', 'right pinky', 'left index', 'right index', 'left thumb', 'right thumb', 'left hip',
+                    'right hip', 'left knee', 'right knee', 'left ankle', 'right ankle', 'left heel', 'right heel', 'left foot index', 'right foot index']
+
+video_repo_path = 'TestVideosInput'
+label_test = 'mouth (right)'
+
+tot_datas, tot_fil_datas, tot_rot_datas, tot_rot_fil_datas,  video_names, nb_frame, fps, deltas = get_all_datas(video_repo_path, labels_mediapipe)
+
+# Display results
+print("\nnumber of frames for all videos : ", nb_frame)
+print("number of frames per second for all videos : ", fps)
+
+sum_deltas = '%.2f' % (np.sum(np.array(deltas)))
+moy_deltas = '%.2f' % (np.mean(np.array(deltas)))
+
+print("Total processing time : ", sum_deltas)
+print("Average processing time : ", moy_deltas)
+
+index = labels_mediapipe.index(label_test)
+"""
+print("\nDisplaying 1D plots for mediapipe point on " + label_test + "...")
+
+plot_1d_ncurves(tot_datas, nb_frame, fps, label_test, index, "raw datas")
+plot_1d_ncurves(tot_fil_datas, nb_frame, fps, label_test, index, "filtered datas")
+plot_1d_ncurves(tot_rot_datas, nb_frame, fps, label_test, index, "rotated datas")
+plot_1d_ncurves(tot_rot_fil_datas, nb_frame, fps, label_test, index, "filtered & rotated datas")
+"""
+
+# Center all datas together
+
+tot_datas_mid, tot_fil_datas_mid, tot_rot_datas_mid, tot_rot_fil_datas_mid, nb_frame_mid = center_allvideos(tot_datas, tot_fil_datas, tot_rot_datas, tot_rot_fil_datas, labels_mediapipe)
+
+print("\nDisplaying 1D plots CENTERED for mediapipe point on " + label_test + "...")
+
+plot_1d_ncurves(tot_datas_mid, nb_frame_mid, fps, label_test, index, "raw datas centered")
+plot_1d_ncurves(tot_fil_datas_mid, nb_frame_mid, fps, label_test, index, "filtered datas centered")
+plot_1d_ncurves(tot_rot_datas_mid, nb_frame_mid, fps, label_test, index, "rotated datas centered")
+plot_1d_ncurves(tot_rot_fil_datas_mid, nb_frame_mid, fps, label_test, index, "filtered & rotated datas centered")
+
+
+"""
 video_path = 'TestVideosInput/snatch_video2.mp4'
-
-labels_mediapipe = ['nose', 'left eye (inner)', 'left eye', 'left eye (outer)', 'right eye (inner)', 'right eye', 'right eye (outer)', 'left ear',
-          'right ear', 'mouth (left)', 'mouth (right)', 'left shoulder', 'right shoulder', 'left elbow', 'right elbow', 'left wrist',
-          'right wrist', 'left pinky', 'right pinky', 'left index', 'right index', 'left thumb', 'right thumb', 'left hip', 'right hip',
-          'left knee', 'right knee', 'left ankle', 'right ankle', 'left heel', 'right heel', 'left foot index', 'right foot index']
-
-
 datas, nb_frame, fps = get_labels_video(video_path, labels_mediapipe)
 datas_rotated = rotation_space(datas, nb_frame, fps, labels_mediapipe)
 
@@ -290,3 +526,4 @@ index = labels_mediapipe.index('left shoulder')
 
 tests_plot_results(index, datas, nb_frame, fps)
 tests_plot_results(index, datas_rotated, nb_frame, fps)
+"""
