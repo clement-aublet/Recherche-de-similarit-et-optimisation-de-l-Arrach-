@@ -15,6 +15,7 @@
 import os
 import cv2
 import time
+import json
 
 import mediapipe as mp
 import matplotlib.pyplot as plt
@@ -42,6 +43,7 @@ def get_labels_video(path, labels_mp, video_name):
     ret, img = cap.read()
 
     nb_frame = cap.get(cv2.CAP_PROP_FRAME_COUNT)
+
     fps = cap.get(cv2.CAP_PROP_FPS)
     width = img.shape[0]
     height = img.shape[1]
@@ -73,10 +75,18 @@ def get_labels_video(path, labels_mp, video_name):
 
         # Add coordinates to datas
         for i in range(0, len(labels_mp)):
-            datas[i][0].append(result.pose_landmarks.landmark[i].x)
-            datas[i][1].append(result.pose_landmarks.landmark[i].y)
-            datas[i][2].append(result.pose_landmarks.landmark[i].z)
-            datas[i][3].append(result.pose_landmarks.landmark[i].visibility)
+
+            if result.pose_landmarks is None:
+                datas[i][0] = datas[i-1][0]
+                datas[i][1] = datas[i-1][1]
+                datas[i][2] = datas[i-1][2]
+                datas[i][3] = datas[i-1][3]
+
+            else:
+                datas[i][0].append(result.pose_landmarks.landmark[i].x)
+                datas[i][1].append(result.pose_landmarks.landmark[i].y)
+                datas[i][2].append(result.pose_landmarks.landmark[i].z)
+                datas[i][3].append(result.pose_landmarks.landmark[i].visibility)
 
         cpt = cpt + 1
 
@@ -173,18 +183,30 @@ def center_allvideos(tot_datas, tot_fil_datas, tot_rot_datas, tot_rot_fil_datas,
     middle_idexes = []
     nb_values_after = []
     nb_values_before = []
+
+    indexes_to_pop = []
     for k in range(0, len(tot_rot_fil_datas)):
         y_array = tot_rot_fil_datas[k][index][1]
         middle_index = get_middle_point(y_array)
 
         if middle_index == -1:
             print("impossible to center video ", k)
-            middle_idexes.append(len(y_array)//2)
+            print("removing artefact video ", k)
+
+            indexes_to_pop.append(k)
+            middle_idexes.append(len(tot_rot_fil_datas)//2)
+
         else:
             middle_idexes.append(middle_index)
 
         nb_values_after.append(len(y_array)-middle_index)
         nb_values_before.append(middle_idexes[k])
+
+    for i in reversed(indexes_to_pop):
+        tot_datas.pop(index)
+        tot_fil_datas.pop(index)
+        tot_rot_datas.pop(index)
+        tot_rot_fil_datas.pop(index)
 
     max_after = min(nb_values_after)
     max_before = min(nb_values_before)
@@ -357,7 +379,7 @@ def lowpass_butter(array, fps, fc):
     b, a = scipy.signal.butter(4, fc / f_nyq, 'low', analog=False)
 
     # Application du filtre
-    s_but = scipy.signal.filtfilt(b, a, array)
+    s_but = (scipy.signal.filtfilt(b, a, array))
 
     return s_but
 
@@ -472,13 +494,14 @@ def tests_plot_results(index, datas, nb_frame, fps):
 
 # Get labels of a selected videos
 
+
 labels_mediapipe = ['nose', 'left eye (inner)', 'left eye', 'left eye (outer)', 'right eye (inner)', 'right eye', 'right eye (outer)',
                     'left ear', 'right ear', 'mouth (left)', 'mouth (right)', 'left shoulder', 'right shoulder', 'left elbow', 'right elbow',
                     'left wrist', 'right wrist', 'left pinky', 'right pinky', 'left index', 'right index', 'left thumb', 'right thumb', 'left hip',
                     'right hip', 'left knee', 'right knee', 'left ankle', 'right ankle', 'left heel', 'right heel', 'left foot index', 'right foot index']
 
 video_repo_path = 'TestVideosInput'
-label_test = 'mouth (right)'
+label_test = 'left wrist'
 
 tot_datas, tot_fil_datas, tot_rot_datas, tot_rot_fil_datas,  video_names, nb_frame, fps, deltas = get_all_datas(video_repo_path, labels_mediapipe)
 
@@ -508,18 +531,56 @@ tot_datas_mid, tot_fil_datas_mid, tot_rot_datas_mid, tot_rot_fil_datas_mid, nb_f
 
 print("\nDisplaying 1D plots CENTERED for mediapipe point on " + label_test + "...")
 
-plot_1d_ncurves(tot_datas_mid, nb_frame_mid, fps, label_test, index, "raw datas centered")
+#plot_1d_ncurves(tot_datas_mid, nb_frame_mid, fps, label_test, index, "raw datas centered")
 plot_1d_ncurves(tot_fil_datas_mid, nb_frame_mid, fps, label_test, index, "filtered datas centered")
-plot_1d_ncurves(tot_rot_datas_mid, nb_frame_mid, fps, label_test, index, "rotated datas centered")
-plot_1d_ncurves(tot_rot_fil_datas_mid, nb_frame_mid, fps, label_test, index, "filtered & rotated datas centered")
+#plot_1d_ncurves(tot_rot_datas_mid, nb_frame_mid, fps, label_test, index, "rotated datas centered")
+#plot_1d_ncurves(tot_rot_fil_datas_mid, nb_frame_mid, fps, label_test, index, "filtered & rotated datas centered")
 
 
 
-video_path = 'TestVideosInput/snatch_video2.mp4'
-datas, nb_frame, fps = get_labels_video(video_path, labels_mediapipe)
-datas_rotated = rotation_space(datas, nb_frame, fps, labels_mediapipe)
 
-print("shape datas : ", np.array(datas).shape)
+def WriteJSON(datas_raw, datas_fil, datas_rot, datas_fil_rot, nb_frame, fps, json_name):
+
+    for i in range(len(datas_fil)):
+        for j in range(len(datas_fil[0])):
+            for k in range(len(datas_fil[0][0])):
+                datas_fil[i][j][k] = datas_fil[i][j][k].tolist()
+
+    print("datas_fil type ", type(datas_fil[0][0][0]))
+
+    datas = {"datas_raw": datas_raw,
+             "datas_fil": datas_fil,
+             "datas_rot": datas_rot,
+             "datas_rot_fil": datas_fil_rot,
+             "nb_frame": nb_frame,
+             "fps": fps
+             }
+
+    with open(json_name + '.json', 'w') as f:
+        json.dump(datas, f)
+        f.close()
+
+def ReadJSON(json_name):
+
+    with open(json_name + '.json', 'r') as f:
+        datas = json.load(f)
+
+        datas_raw = datas['datas_raw']
+        datas_fil = datas['datas_fil']
+        datas_rot = datas['datas_rot']
+        datas_rot_fil = datas['datas_rot_fil']
+
+        nb_frame = datas['nb_frame']
+        fps = datas['fps']
+
+        f.close()
+
+    return datas_raw, datas_fil, datas_rot, datas_rot_fil, nb_frame, fps
+
+
+WriteJSON(tot_datas_mid, tot_fil_datas_mid, tot_rot_datas_mid, tot_rot_fil_datas_mid, nb_frame_mid, fps, "datasForTraining")
+ReadJSON("datasForTraining")
+
 """
 # Selection of the label to plot
 index = labels_mediapipe.index('left shoulder')
