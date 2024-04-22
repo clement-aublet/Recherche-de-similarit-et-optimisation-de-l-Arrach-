@@ -19,7 +19,7 @@ def extraire_metadonnees_enrichies(nom_fichier):
         metadata = match.groupdict()
 
         # Extraction supplémentaire pour le poids soulevé et le type de mouvement
-        detail_match = re.search(r'(\d+)kg (Snatch|Clean & Jerk|Squat)', nom_fichier, re.IGNORECASE)
+        detail_match = re.search(r'(\d+)kg (Snatch|Clean & Jerk|Squat|CleanandJerk)', nom_fichier, re.IGNORECASE)
         if detail_match:
             metadata["poids_souleve"] = detail_match.group(1) + "kg"
             metadata["type_mouvement"] = detail_match.group(2)
