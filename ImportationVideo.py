@@ -50,5 +50,5 @@ def telechargement_et_lecture_playlist(playlist_url, path='videos'):
             print(f"Erreur lors du téléchargement ou de la lecture de la vidéo {video_url}: {e}") # exception pour voir si cela ne fonctionne pas
 
 #L'URL de la playlist YouTube test
-playlist_url = 'https://www.youtube.com/playlist?list=PL3hyy4ipA8G3sbSfny9ka5z_lfink2DQd'
+playlist_url = 'https://www.youtube.com/playlist?list=PL_RB_1AlbHf1V_BPtyn-TEsyTfqKv-iFM'
 telechargement_et_lecture_playlist(playlist_url)
