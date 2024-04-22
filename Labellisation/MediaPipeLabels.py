@@ -16,6 +16,7 @@ import os
 import cv2
 import time
 import json
+import statistics
 
 import mediapipe as mp
 import matplotlib.pyplot as plt
@@ -133,6 +134,7 @@ def get_all_datas(video_repo_path, labels_mediapipe):
 
     # Get all video datas by name from source directory
     video_names = os.listdir(video_repo_path)
+
     for video_name in video_names:
         print("Processing video : " + video_name + "...")
 
@@ -202,11 +204,12 @@ def center_allvideos(tot_datas, tot_fil_datas, tot_rot_datas, tot_rot_fil_datas,
         nb_values_after.append(len(y_array)-middle_index)
         nb_values_before.append(middle_idexes[k])
 
-    for i in reversed(indexes_to_pop):
-        tot_datas.pop(index)
-        tot_fil_datas.pop(index)
-        tot_rot_datas.pop(index)
-        tot_rot_fil_datas.pop(index)
+    if len(indexes_to_pop) != 0:
+        for i in reversed(indexes_to_pop):
+            tot_datas.pop(i)
+            tot_fil_datas.pop(i)
+            tot_rot_datas.pop(i)
+            tot_rot_fil_datas.pop(i)
 
     max_after = min(nb_values_after)
     max_before = min(nb_values_before)
@@ -428,6 +431,34 @@ def angle_2vectors(v1, axis):
     return result_radians
 
 
+def suppr_outliers(tot_datas, tot_fil_datas, tot_rot_datas, tot_rot_fil_datas, labels_mediapipe):
+    index = labels_mediapipe.index('left shoulder')
+
+    medians = []
+    indexes_to_pop = []
+
+    for k in range(0, len(tot_fil_datas)):
+        y_array = tot_fil_datas[k][index][1]
+        medians.append(statistics.median(y_array))
+
+    median_tot = sum(medians) / len(tot_fil_datas)
+
+    for k in range(0, len(tot_fil_datas)):
+        if abs(median_tot - medians[k]) > 0.3:
+            print("Median to far from others for video ", k)
+            print("Removing artefact video ", k)
+
+            indexes_to_pop.append(k)
+
+    for i in reversed(indexes_to_pop):
+        tot_datas.pop(i)
+        tot_fil_datas.pop(i)
+        tot_rot_datas.pop(i)
+        tot_rot_fil_datas.pop(i)
+
+    return tot_datas, tot_fil_datas, tot_rot_datas, tot_rot_fil_datas
+
+
 def get_rot_matrix(datas, nb_frame, fps, labels_mp, proj_axis, rot_axis):
     index1 = labels_mp.index('left shoulder')
     index2 = labels_mp.index('right shoulder')
@@ -516,27 +547,20 @@ print("Total processing time : ", sum_deltas)
 print("Average processing time : ", moy_deltas)
 
 index = labels_mediapipe.index(label_test)
-"""
-print("\nDisplaying 1D plots for mediapipe point on " + label_test + "...")
 
-plot_1d_ncurves(tot_datas, nb_frame, fps, label_test, index, "raw datas")
+print("\nDisplaying 1D plots for mediapipe point on " + label_test + "...\n")
 plot_1d_ncurves(tot_fil_datas, nb_frame, fps, label_test, index, "filtered datas")
-plot_1d_ncurves(tot_rot_datas, nb_frame, fps, label_test, index, "rotated datas")
-plot_1d_ncurves(tot_rot_fil_datas, nb_frame, fps, label_test, index, "filtered & rotated datas")
-"""
+
 
 # Center all datas together
-
 tot_datas_mid, tot_fil_datas_mid, tot_rot_datas_mid, tot_rot_fil_datas_mid, nb_frame_mid = center_allvideos(tot_datas, tot_fil_datas, tot_rot_datas, tot_rot_fil_datas, labels_mediapipe)
-
-print("\nDisplaying 1D plots CENTERED for mediapipe point on " + label_test + "...")
-
-#plot_1d_ncurves(tot_datas_mid, nb_frame_mid, fps, label_test, index, "raw datas centered")
+print("\nDisplaying 1D plots CENTERED for mediapipe point on " + label_test + "...\n")
 plot_1d_ncurves(tot_fil_datas_mid, nb_frame_mid, fps, label_test, index, "filtered datas centered")
-#plot_1d_ncurves(tot_rot_datas_mid, nb_frame_mid, fps, label_test, index, "rotated datas centered")
-#plot_1d_ncurves(tot_rot_fil_datas_mid, nb_frame_mid, fps, label_test, index, "filtered & rotated datas centered")
 
-
+# Remove all artefacts datas
+tot_datas_clean, tot_fil_datas_clean, tot_rot_datas_clean, tot_rot_fil_datas_clean = suppr_outliers(tot_datas_mid, tot_fil_datas_mid, tot_rot_datas_mid, tot_rot_fil_datas_mid, labels_mediapipe)
+print("\nDisplaying 1D plots CENTERED CLEANED for mediapipe point on " + label_test + "...\n")
+plot_1d_ncurves(tot_fil_datas_clean, nb_frame_mid, fps, label_test, index, "filtered datas centered")
 
 
 def WriteJSON(datas_raw, datas_fil, datas_rot, datas_fil_rot, nb_frame, fps, json_name):
@@ -545,8 +569,6 @@ def WriteJSON(datas_raw, datas_fil, datas_rot, datas_fil_rot, nb_frame, fps, jso
         for j in range(len(datas_fil[0])):
             for k in range(len(datas_fil[0][0])):
                 datas_fil[i][j][k] = datas_fil[i][j][k].tolist()
-
-    print("datas_fil type ", type(datas_fil[0][0][0]))
 
     datas = {"datas_raw": datas_raw,
              "datas_fil": datas_fil,
@@ -578,13 +600,6 @@ def ReadJSON(json_name):
     return datas_raw, datas_fil, datas_rot, datas_rot_fil, nb_frame, fps
 
 
-WriteJSON(tot_datas_mid, tot_fil_datas_mid, tot_rot_datas_mid, tot_rot_fil_datas_mid, nb_frame_mid, fps, "datasForTraining")
+WriteJSON(tot_datas_clean, tot_fil_datas_clean, tot_rot_datas_clean, tot_rot_fil_datas_clean, nb_frame_mid, fps, "datasForTraining")
 ReadJSON("datasForTraining")
 
-"""
-# Selection of the label to plot
-index = labels_mediapipe.index('left shoulder')
-
-tests_plot_results(index, datas, nb_frame, fps)
-tests_plot_results(index, datas_rotated, nb_frame, fps)
-"""
