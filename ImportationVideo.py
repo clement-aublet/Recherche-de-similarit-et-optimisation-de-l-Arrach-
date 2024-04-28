@@ -2,7 +2,7 @@ from pytube import Playlist
 import cv2
 import os
 
-def telechargement_video(url, path='videos'):   # création du dossier vidéos où nous stockerons ces dernières
+def telechargement_video(url, path='Labellisation\TestVideosInput'):   # création du dossier vidéos où nous stockerons ces dernières
     from pytube import YouTube
     yt = YouTube(url)
     # Choix du stream avec la résolution souhaitée ou le premier stream vidéo disponible
@@ -37,7 +37,7 @@ def lecture_video(video_path):
     cap.release()
     cv2.destroyAllWindows()
 
-def telechargement_et_lecture_playlist(playlist_url, path='videos'):
+def telechargement_et_lecture_playlist(playlist_url, path='Labellisation\TestVideosInput'):
     playlist = Playlist(playlist_url)
     print(f"Téléchargement et lecture des vidéos de la playlist: {playlist.title}")
     for video_url in playlist.video_urls:
@@ -50,5 +50,11 @@ def telechargement_et_lecture_playlist(playlist_url, path='videos'):
             print(f"Erreur lors du téléchargement ou de la lecture de la vidéo {video_url}: {e}") # exception pour voir si cela ne fonctionne pas
 
 #L'URL de la playlist YouTube test
+<<<<<<< Updated upstream
 playlist_url = 'https://www.youtube.com/playlist?list=PL_RB_1AlbHf1V_BPtyn-TEsyTfqKv-iFM'
 telechargement_et_lecture_playlist(playlist_url)
+=======
+playlist_url = 'https://youtube.com/playlist?list=PL_RB_1AlbHf1MVagKPksVOxyMubkX5R52&si=pNC_30PnvxqcHVFg'
+playlist_url2 = 'https://youtube.com/playlist?list=PL_RB_1AlbHf1V_BPtyn-TEsyTfqKv-iFM&si=qHnSJGa1yKl1_niM'
+telechargement_et_lecture_playlist(playlist_url2)
+>>>>>>> Stashed changes
