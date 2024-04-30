@@ -13,6 +13,10 @@ def load_data(filename):
 def calculate_pose_distance(pose1, pose2):
     return np.linalg.norm(np.array(pose1) - np.array(pose2))
 
+def calculate_pose_distance_specific(pose1, pose2, index):
+    # Ici, index est l'indice du point de l'épaule gauche dans la liste des points de pose
+    return np.linalg.norm(np.array(pose1[index]) - np.array(pose2[index]))
+
 def compare_all_videos(poses):
     num_videos = len(poses)
     distances_matrix = np.zeros((num_videos, num_videos))
@@ -20,6 +24,18 @@ def compare_all_videos(poses):
     for i in range(num_videos):
         for j in range(i + 1, num_videos):
             distances = [calculate_pose_distance(pose1, pose2) for pose1, pose2 in zip(poses[i], poses[j])]
+            distances_matrix[i][j] = np.mean(distances)
+            distances_matrix[j][i] = distances_matrix[i][j]
+
+    return distances_matrix
+
+def compare_all_videos_specific(poses, index):
+    num_videos = len(poses)
+    distances_matrix = np.zeros((num_videos, num_videos))
+
+    for i in range(num_videos):
+        for j in range(i + 1, num_videos):
+            distances = [calculate_pose_distance_specific(pose1, pose2, index) for pose1, pose2 in zip(poses[i], poses[j])]
             distances_matrix[i][j] = np.mean(distances)
             distances_matrix[j][i] = distances_matrix[i][j]
 
@@ -54,17 +70,19 @@ def display_videos(video_path, index1, index2):
     cv2.destroyAllWindows()
 
 # Chemin vers le fichier JSON et le dossier vidéo
-json_path = 'datasForTraining.json'
+json_path = 'datasForTraining2.json'
 video_path = 'C:\\Users\\Clément Aublet\\OneDrive - ESIGELEC\\Bureau\\projetSeminaire\\Recherche-de-similarit-et-optimisation-de-l-Arrach-\\videos'
+
 
 # Charger les données
 poses = load_data(json_path)
 
+
 # Comparer les vidéos
 distances_matrix = compare_all_videos(poses)
 
-# Trouver la vidéo la plus similaire à la vidéo 42
-video_index = 54
+# Trouver la vidéo la plus similaire à la vidéo par rapport à une vidéo
+video_index = 10
 most_similar = find_most_similar_video(distances_matrix, video_index)
 print(f"La vidéo la plus similaire à la vidéo {video_index} est la vidéo {most_similar}.")
 
@@ -77,3 +95,4 @@ plt.show()
 
 # Afficher les deux vidéos
 display_videos(video_path, video_index, most_similar)
+
