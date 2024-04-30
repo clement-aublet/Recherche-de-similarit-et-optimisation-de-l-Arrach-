@@ -27,7 +27,7 @@ input_shape = X_train.shape[1:]
 inputs = Input(shape=input_shape)
 x = LSTM(64, return_sequences=True)(inputs)
 x = Dropout(0.2)(x)
-latent_space = LSTM(32)(x)  # Output of this layer is the latent space
+latent_space = LSTM(32)(x)  # Espace latent
 x = Dense(input_shape[0] * input_shape[1])(latent_space)
 outputs = Reshape(input_shape)(x)
 model = Model(inputs, outputs)
@@ -64,7 +64,7 @@ def find_similar_videos(latent_vectors, test_index, top_k=3):
     indices = np.argsort(distances)[1:top_k+1]  # obtenir les k plus proches, sauter le premier car c'est la vidéo elle-même
     return indices, distances[indices]
 
-# Choisissez une vidéo de test au hasard
+# Choix une vidéo de test au hasard
 test_video_index = np.random.randint(len(X_test))
 similar_indices, similar_distances = find_similar_videos(latent_vectors, test_video_index + len(X_train))  # décalage par taille de train
 
