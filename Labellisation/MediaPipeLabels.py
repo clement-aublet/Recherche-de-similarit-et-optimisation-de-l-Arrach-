@@ -4,8 +4,8 @@
 
     Author : Béatrice GARCIA CEGARRA
 
-    Create date : 10/03/2024
-    Last update : 17/03/2024
+    Creation date :    10/03/2024
+    Last update date : 28/04/2024
 """
 
 ##### Includes #####
@@ -14,14 +14,13 @@
 
 import os
 import cv2
-import time
 import json
 import statistics
+import bisect
 
 import mediapipe as mp
 import matplotlib.pyplot as plt
 from scipy.signal import savgol_filter
-import numpy as np
 import scipy.signal
 import scipy.io.wavfile
 from matplotlib.pyplot import *
@@ -50,7 +49,7 @@ def get_labels_video(path, labels_mp, video_name):
     height = img.shape[1]
 
     # Create video output
-    out = cv2.VideoWriter('TestVideosOutput/output_'+video_name+'.mp4', cv2.VideoWriter.fourcc(*'MP4V'), fps, (height, width))
+    out = cv2.VideoWriter('TestVideosOutput/output_'+video_name[:30]+'.mp4', cv2.VideoWriter.fourcc(*'MP4V'), fps, (height, width))
 
     # Video Labellisation
     datas = []
@@ -97,28 +96,12 @@ def get_labels_video(path, labels_mp, video_name):
     out.release()
     cap.release()
 
+    os.rename('TestVideosInput/'+video_name, 'TestVideosInput/'+video_name[:30]+'.mp4')
+
+    # get delta time of labellisation
     delta_time = time.time() - start
 
     return datas, nb_frame, fps, delta_time
-
-
-def crop_datas_maxmin(datass, len_min):
-    new_datass = []
-    for datas in datass:
-        new_datas = []
-
-        for coords in datas:
-            new_coords = []
-
-            for coord in coords:
-                new_coord = coord[:(int(len_min)-1)]
-                new_coords.append(new_coord)
-
-            new_datas.append(new_coords)
-
-        new_datass.append(new_datas)
-
-    return new_datass
 
 
 def get_all_datas(video_repo_path, labels_mediapipe):
@@ -169,8 +152,6 @@ def get_all_datas(video_repo_path, labels_mediapipe):
     new_tot_filtered_datas = crop_datas_maxmin(tot_filtered_datas, len_min)
     new_tot_rotated_datas = crop_datas_maxmin(tot_rotated_datas, len_min)
     new_tot_rotated_filtered_datas = crop_datas_maxmin(tot_rotated_filtered_datas, len_min)
-
-    # get median delta times of calcul
 
     return (new_tot_datas, new_tot_filtered_datas,
             new_tot_rotated_datas, new_tot_rotated_filtered_datas,
@@ -244,6 +225,24 @@ def center_allvideos(tot_datas, tot_fil_datas, tot_rot_datas, tot_rot_fil_datas,
     return new_tot_datas, new_tot_fil_datas, new_tot_rot_datas, new_tot_rot_fil_datas, nb_frame
 
 
+def crop_datas_maxmin(datass, len_min):
+    new_datass = []
+    for datas in datass:
+        new_datas = []
+
+        for coords in datas:
+            new_coords = []
+
+            for coord in coords:
+                new_coord = coord[:(int(len_min)-1)]
+                new_coords.append(new_coord)
+
+            new_datas.append(new_coords)
+
+        new_datass.append(new_datas)
+
+    return new_datass
+
 
 def find_local_maxmin(arr):
     mx = []
@@ -269,7 +268,6 @@ def find_local_maxmin(arr):
     return mx, mn
 
 
-import bisect
 def get_middle_point(arr):
     mx_indexes, mn_indexes = find_local_maxmin(arr)
     arr_max = max(arr)
@@ -496,72 +494,7 @@ def rotation_space(datas, nb_frame, fps, labels_mp):
     return rot_datas
 
 
-##### Tests #####
-
-def tests_plot_results(index, datas, nb_frame, fps):
-    x = datas[index][0]
-    y = datas[index][1]
-    z = datas[index][2]
-
-    # Filter datas of selected index
-    filtered1_x = lowpass_savgol(x)
-    filtered1_y = lowpass_savgol(y)
-    filtered1_z = lowpass_savgol(z)
-
-    filtered2_x = lowpass_butter(x, fps, 1)
-    filtered2_y = lowpass_butter(y, fps, 1)
-    filtered2_z = lowpass_butter(z, fps, 0.5)
-
-    # plot 3D curves
-    plot_3d_curve(x, y, z, "Evolution of left shoulder in 3D (Raw datas)")
-    plot_3d_curve(filtered1_x, filtered1_y, filtered1_z, "Evolution of left shoulder in 3D (Savgol filter)")
-    plot_3d_curve(filtered2_x, filtered2_y, filtered2_z, "Evolution of left shoulder in 3D (Butterworth filter)")
-
-    # plot 1D curves (decompose axis)
-    plot_1d_curve(x, y, z, nb_frame, fps, "Evolution of left shoulder in 1D (Raw datas)")
-    plot_1d_curve(filtered1_x, filtered1_y, filtered1_z, nb_frame, fps, "Evolution of left shoulder in 1D (Savgol filter)")
-    plot_1d_curve(filtered2_x, filtered2_y, filtered2_z, nb_frame, fps, "Evolution of left shoulder in 1D (Butterworth filter)")
-
-
-# Get labels of a selected videos
-
-
-labels_mediapipe = ['nose', 'left eye (inner)', 'left eye', 'left eye (outer)', 'right eye (inner)', 'right eye', 'right eye (outer)',
-                    'left ear', 'right ear', 'mouth (left)', 'mouth (right)', 'left shoulder', 'right shoulder', 'left elbow', 'right elbow',
-                    'left wrist', 'right wrist', 'left pinky', 'right pinky', 'left index', 'right index', 'left thumb', 'right thumb', 'left hip',
-                    'right hip', 'left knee', 'right knee', 'left ankle', 'right ankle', 'left heel', 'right heel', 'left foot index', 'right foot index']
-
-video_repo_path = 'TestVideosInput'
-label_test = 'left wrist'
-
-tot_datas, tot_fil_datas, tot_rot_datas, tot_rot_fil_datas,  video_names, nb_frame, fps, deltas = get_all_datas(video_repo_path, labels_mediapipe)
-
-# Display results
-print("\nnumber of frames for all videos : ", nb_frame)
-print("number of frames per second for all videos : ", fps)
-
-sum_deltas = '%.2f' % (np.sum(np.array(deltas)))
-moy_deltas = '%.2f' % (np.mean(np.array(deltas)))
-
-print("Total processing time : ", sum_deltas)
-print("Average processing time : ", moy_deltas)
-
-index = labels_mediapipe.index(label_test)
-
-print("\nDisplaying 1D plots for mediapipe point on " + label_test + "...\n")
-plot_1d_ncurves(tot_fil_datas, nb_frame, fps, label_test, index, "filtered datas")
-
-
-# Center all datas together
-tot_datas_mid, tot_fil_datas_mid, tot_rot_datas_mid, tot_rot_fil_datas_mid, nb_frame_mid = center_allvideos(tot_datas, tot_fil_datas, tot_rot_datas, tot_rot_fil_datas, labels_mediapipe)
-print("\nDisplaying 1D plots CENTERED for mediapipe point on " + label_test + "...\n")
-plot_1d_ncurves(tot_fil_datas_mid, nb_frame_mid, fps, label_test, index, "filtered datas centered")
-
-# Remove all artefacts datas
-tot_datas_clean, tot_fil_datas_clean, tot_rot_datas_clean, tot_rot_fil_datas_clean = suppr_outliers(tot_datas_mid, tot_fil_datas_mid, tot_rot_datas_mid, tot_rot_fil_datas_mid, labels_mediapipe)
-print("\nDisplaying 1D plots CENTERED CLEANED for mediapipe point on " + label_test + "...\n")
-plot_1d_ncurves(tot_fil_datas_clean, nb_frame_mid, fps, label_test, index, "filtered datas centered")
-
+#### JSON Storage of datas ####
 
 def WriteJSON(datas_raw, datas_fil, datas_rot, datas_fil_rot, nb_frame, fps, json_name):
 
@@ -600,6 +533,69 @@ def ReadJSON(json_name):
     return datas_raw, datas_fil, datas_rot, datas_rot_fil, nb_frame, fps
 
 
-WriteJSON(tot_datas_clean, tot_fil_datas_clean, tot_rot_datas_clean, tot_rot_fil_datas_clean, nb_frame_mid, fps, "datasForTraining")
-ReadJSON("datasForTraining")
+##### Tests #####
 
+def tests_plot_results(index, datas, nb_frame, fps):
+    x = datas[index][0]
+    y = datas[index][1]
+    z = datas[index][2]
+
+    # Filter datas of selected index
+    filtered1_x = lowpass_savgol(x)
+    filtered1_y = lowpass_savgol(y)
+    filtered1_z = lowpass_savgol(z)
+
+    filtered2_x = lowpass_butter(x, fps, 1)
+    filtered2_y = lowpass_butter(y, fps, 1)
+    filtered2_z = lowpass_butter(z, fps, 0.5)
+
+    # plot 3D curves
+    plot_3d_curve(x, y, z, "Evolution of left shoulder in 3D (Raw datas)")
+    plot_3d_curve(filtered1_x, filtered1_y, filtered1_z, "Evolution of left shoulder in 3D (Savgol filter)")
+    plot_3d_curve(filtered2_x, filtered2_y, filtered2_z, "Evolution of left shoulder in 3D (Butterworth filter)")
+
+    # plot 1D curves (decompose axis)
+    plot_1d_curve(x, y, z, nb_frame, fps, "Evolution of left shoulder in 1D (Raw datas)")
+    plot_1d_curve(filtered1_x, filtered1_y, filtered1_z, nb_frame, fps, "Evolution of left shoulder in 1D (Savgol filter)")
+    plot_1d_curve(filtered2_x, filtered2_y, filtered2_z, nb_frame, fps, "Evolution of left shoulder in 1D (Butterworth filter)")
+
+# Set global variables for treatment
+labels_mediapipe = ['nose', 'left eye (inner)', 'left eye', 'left eye (outer)', 'right eye (inner)', 'right eye', 'right eye (outer)',
+                    'left ear', 'right ear', 'mouth (left)', 'mouth (right)', 'left shoulder', 'right shoulder', 'left elbow', 'right elbow',
+                    'left wrist', 'right wrist', 'left pinky', 'right pinky', 'left index', 'right index', 'left thumb', 'right thumb', 'left hip',
+                    'right hip', 'left knee', 'right knee', 'left ankle', 'right ankle', 'left heel', 'right heel', 'left foot index', 'right foot index']
+
+video_repo_path = 'TestVideosInput'
+label_test = 'left wrist'
+
+# Get labels of a selected videos
+tot_datas, tot_fil_datas, tot_rot_datas, tot_rot_fil_datas,  video_names, nb_frame, fps, deltas = get_all_datas(video_repo_path, labels_mediapipe)
+
+# Display results
+print("\nnumber of frames for all videos : ", nb_frame)
+print("number of frames per second for all videos : ", fps)
+
+sum_deltas = '%.2f' % (np.sum(np.array(deltas)))
+moy_deltas = '%.2f' % (np.mean(np.array(deltas)))
+
+print("Total processing time : ", sum_deltas)
+print("Average processing time : ", moy_deltas)
+
+index = labels_mediapipe.index(label_test)
+
+print("\nDisplaying 1D plots for mediapipe point on " + label_test + "...\n")
+plot_1d_ncurves(tot_fil_datas, nb_frame, fps, label_test, index, "filtered datas")
+
+
+# Center all datas together
+tot_datas_mid, tot_fil_datas_mid, tot_rot_datas_mid, tot_rot_fil_datas_mid, nb_frame_mid = center_allvideos(tot_datas, tot_fil_datas, tot_rot_datas, tot_rot_fil_datas, labels_mediapipe)
+print("\nDisplaying 1D plots CENTERED for mediapipe point on " + label_test + "...\n")
+plot_1d_ncurves(tot_fil_datas_mid, nb_frame_mid, fps, label_test, index, "filtered datas centered")
+
+# Remove all artefacts datas
+tot_datas_clean, tot_fil_datas_clean, tot_rot_datas_clean, tot_rot_fil_datas_clean = suppr_outliers(tot_datas_mid, tot_fil_datas_mid, tot_rot_datas_mid, tot_rot_fil_datas_mid, labels_mediapipe)
+print("\nDisplaying 1D plots CENTERED CLEANED for mediapipe point on " + label_test + "...\n")
+plot_1d_ncurves(tot_fil_datas_clean, nb_frame_mid, fps, label_test, index, "filtered datas centered")
+
+# Store final datas in a local JSON file
+WriteJSON(tot_datas_clean, tot_fil_datas_clean, tot_rot_datas_clean, tot_rot_fil_datas_clean, nb_frame_mid, fps, "datasForTraining")
